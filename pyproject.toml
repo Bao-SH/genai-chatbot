@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "scripts"
+version = "0.1.0"
+description = ""
+authors = ["Shuanghui Bao <baoshrainbow@126.com>"]
+readme = "README.md"
+#package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.5"
+uvicorn = "^0.32.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+packages = [
+    { include = "scripts" },
+]
+
+[tool.poetry.scripts]
+start = "scripts.main:app_run"
