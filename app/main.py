@@ -1,9 +1,9 @@
 # app/main.py
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
 from openai import AzureOpenAI
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -12,14 +12,19 @@ client = AzureOpenAI(api_key=os.getenv("AZURE_OPENAI_API_KEY"),
                      api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
                      azure_endpoint=os.getenv("AZURE_OPENAI_API_BASE"))
 
+
 class ChatRequest(BaseModel):
     message: str
+
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
     try:
         chat_completion = client.chat.completions.create(
             messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant."},
                 {
                     "role": "user",
                     "content": request.message,
@@ -32,10 +37,13 @@ async def chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interacting with OpenAI API: {str(e)}")
 
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
