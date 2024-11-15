@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response, Header
 from fastapi.responses import StreamingResponse
 from app.config.settings import settings
 from app.models.chat import ChatRequest, ChatResponse
@@ -28,17 +28,16 @@ async def handle_streaming_chat(request: ChatRequest, session_id: str):
     
     async def generate():
         collected_content = []
-        async for chunk in stream:
+        for chunk in stream:
             if chunk.choices[0].delta.content is not None:
                 content = chunk.choices[0].delta.content
                 collected_content.append(content)
                 yield content
         
-        # After streaming completes, save the full response to session
         full_response = "".join(collected_content)
         session.messages.append({"role": "assistant", "content": full_response})
                 
-    return StreamingResponse(generate(), media_type='text/event-stream')
+    return StreamingResponse(generate(), media_type='text/event-stream', headers={"X-Session-ID": session_id})
 
 async def handle_regular_chat(request: ChatRequest, session_id: str) -> ChatResponse:
     session = session_manager.get_session(session_id)
@@ -50,18 +49,14 @@ async def handle_regular_chat(request: ChatRequest, session_id: str) -> ChatResp
     # Save the response to session
     session.messages.append({"role": "assistant", "content": chat_response})
     
-    # Create and return a ChatResponse object
     return ChatResponse(
-        response=chat_response,
-        session_id=session_id
+        response=chat_response
     )
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(request: ChatRequest) -> ChatResponse:
+async def chat_endpoint(request: ChatRequest, session_id: str = Header(None, alias="X-Session-ID")) -> ChatResponse:
     try:
-        # Get or create session
-        session_id = request.session_id
-        
+        # Get or create session based on header
         if session_id:
             try:
                 session_manager.get_session(session_id)
@@ -74,11 +69,10 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
             return await handle_streaming_chat(request, session_id)
         else:
             response = await handle_regular_chat(request, session_id)
-            # Explicitly ensure we're returning a ChatResponse
-            return ChatResponse(
-                response=response.response,
-                session_id=session_id
-            )
+            # Add session_id to response header
+            response_with_header = Response(content=response.model_dump_json(), media_type="application/json")
+            response_with_header.headers["X-Session-ID"] = session_id
+            return response_with_header
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

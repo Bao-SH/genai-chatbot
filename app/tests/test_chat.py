@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from unittest.mock import ANY
 
 from app.routers.chat import router
-from app.models.chat import ChatRequest, ChatResponse
+from app.models.chat import ChatResponse
 
 class TestChat(unittest.TestCase):
     def setUp(self):
