@@ -1,11 +1,13 @@
 import subprocess
+import uvicorn
 
 def app_run():
-    command = """
-    cd app && \
-    poetry run python main.py
-    """
-    subprocess.run(command, shell=True)
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True  # Enable auto-reload
+    )
 
 # runs tests
 def app_test():
