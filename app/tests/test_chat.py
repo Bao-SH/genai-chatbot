@@ -20,60 +20,104 @@ class TestChat(unittest.TestCase):
 
     @patch('app.routers.chat.session_manager')
     @patch('app.routers.chat.handle_regular_chat')
-    def test_chat_endpoint_regular(self, mock_handle_regular_chat, mock_session_manager):
+    def test_chat_endpoint_regular_with_existing_session(self, mock_handle_regular_chat, mock_session_manager):
         # Setup mock
+        session_id = "test-session"
         mock_session = ChatSession()
         mock_session_manager.get_session.return_value = mock_session
-        mock_response = ChatResponse(response="Test response", session_id="test-session")
+        mock_response = ChatResponse(response="Test response")
         mock_handle_regular_chat.return_value = mock_response
 
-        # Test request
+        # Test request with existing session ID in header
         response = self.client.post(
             "/chat",
-            json={
-                "message": "Hello",
-                "session_id": "test-session",
-                "enable_streaming": False
-            }
+            json={"message": "Hello", "enable_streaming": False},
+            headers={"X-Session-ID": session_id}
         )
 
         # Assertions
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {
-            "response": "Test response",
-            "session_id": "test-session"
-        })
+        self.assertEqual(response.json(), {"response": "Test response"})
+        self.assertEqual(response.headers["X-Session-ID"], session_id)
+        mock_session_manager.get_session.assert_called_with(session_id)
+
+    @patch('app.routers.chat.session_manager')
+    @patch('app.routers.chat.handle_regular_chat')
+    def test_chat_endpoint_regular_new_session(self, mock_handle_regular_chat, mock_session_manager):
+        # Setup mock for new session creation
+        new_session_id = "new-session-id"
+        mock_session_manager.create_session.return_value = new_session_id
+        mock_response = ChatResponse(response="Test response")
+        mock_handle_regular_chat.return_value = mock_response
+
+        # Test request without session ID
+        response = self.client.post(
+            "/chat",
+            json={"message": "Hello", "enable_streaming": False}
+        )
+
+        # Assertions
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"response": "Test response"})
+        self.assertEqual(response.headers["X-Session-ID"], new_session_id)
+        mock_session_manager.create_session.assert_called_once()
 
     @patch('app.routers.chat.session_manager')
     @patch('app.routers.chat.handle_streaming_chat')
     def test_chat_endpoint_streaming(self, mock_handle_streaming, mock_session_manager):
-
+        # Setup mocks
+        session_id = "test-session"
         mock_session = ChatSession()
         mock_session_manager.get_session.return_value = mock_session
         
-        # Setup mock
         async def mock_stream():
             yield "Test streaming response"
-            
-        mock_streaming_response = StreamingResponse(mock_stream())
+        mock_streaming_response = StreamingResponse(
+            mock_stream(), 
+            headers={"X-Session-ID": session_id}
+        )
         mock_handle_streaming.return_value = mock_streaming_response
 
         # Test request
         response = self.client.post(
             "/chat",
-            json={
-                "message": "Hello",
-                "session_id": "85378f61-0b3e-4bc6-a82c-d9d1c3d0f6f4",
-                "enable_streaming": True
-            }
+            json={"message": "Hello", "enable_streaming": True},
+            headers={"X-Session-ID": session_id}
         )
 
         # Assertions
         self.assertEqual(response.status_code, 200)
         mock_handle_streaming.assert_called_once_with(
             ANY,  # ChatRequest object
-            "85378f61-0b3e-4bc6-a82c-d9d1c3d0f6f4"  # session_id
+            session_id
         )
+
+    @patch('app.routers.chat.session_manager')
+    @patch('app.routers.chat.handle_regular_chat')  # Add this mock
+    def test_chat_endpoint_invalid_session(self, mock_handle_regular_chat, mock_session_manager):
+        # Setup mocks
+        new_session_id = "new-session-id"
+        mock_session_manager.get_session.side_effect = ValueError("Invalid session")
+        mock_session_manager.create_session.return_value = new_session_id
+        
+        # Mock the response from handle_regular_chat
+        mock_response = ChatResponse(response="Test response")
+        mock_handle_regular_chat.return_value = mock_response
+
+        # Test request with invalid session ID
+        response = self.client.post(
+            "/chat",
+            json={"message": "Hello", "enable_streaming": False},
+            headers={"X-Session-ID": "invalid-session"}
+        )
+
+        # Should create new session and continue
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"response": "Test response"})
+        self.assertEqual(response.headers["X-Session-ID"], new_session_id)
+        mock_session_manager.create_session.assert_called_once()
+        # Verify handle_regular_chat was called with new session ID
+        mock_handle_regular_chat.assert_called_once_with(ANY, new_session_id)
 
     def test_chat_endpoint_error(self):
         # Test request with invalid data
@@ -90,7 +134,7 @@ class TestChat(unittest.TestCase):
         # Setup mock
         mock_session = MagicMock()
         mock_session.messages = ["message1", "message2"]
-        mock_session.created_at = "2024-01-01T00:00:00"
+        mock_session.created_at = 1234567890  # Unix timestamp
         mock_session_manager.get_session.return_value = mock_session
 
         # Test request
@@ -101,7 +145,7 @@ class TestChat(unittest.TestCase):
         self.assertEqual(response.json(), {
             "session_id": "test-session",
             "message_count": 2,
-            "created_at": "2024-01-01T00:00:00"
+            "created_at": 1234567890
         })
 
     @patch('app.routers.chat.session_manager')
